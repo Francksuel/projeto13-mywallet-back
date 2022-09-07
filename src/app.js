@@ -5,12 +5,19 @@ import { MongoClient } from "mongodb";
 import joi from "joi";
 import bcrypt from "bcrypt";
 import { stripHtml } from "string-strip-html";
+import { v4 as uuid } from "uuid";
+
 dotenv.config();
 
 const userSchema = joi.object({
 	name: joi.string().min(3).required(),
 	email: joi.string().email().required(),
 	password: joi.string().min(4).required(),
+});
+const movementSchema = joi.object({
+	valor: joi.number().positive().precision(2).required(),
+	description: joi.string().min(1).required(),
+	type: joi.string().valid("entrada", "saida").required(),
 });
 
 const mongoClient = new MongoClient(process.env.MONGO_URI);
@@ -42,25 +49,52 @@ app.post("/sign-up", async (req, res) => {
 		registry.name = stripHtml(registry.name).result.trim();
 		registry.email = stripHtml(registry.email).result.trim();
 	}
-	const isRepeatName = await repeatName(registry.name).then((repeat) => {
-		return repeat.length;
-	});
-	if (isRepeatName !== 0) {
-		return res.status(409).send("O nome de usuário já existe!");
+	try {
+		const isRepeatName = await repeatName(registry.name).then((repeat) => {
+			return repeat.length;
+		});
+		if (isRepeatName !== 0) {
+			return res.status(409).send("O nome de usuário já existe!");
+		}
+		const isRepeatEmail = await repeatEmail(registry.email).then((repeat) => {
+			return repeat.length;
+		});
+		if (isRepeatEmail !== 0) {
+			return res.status(409).send("Já existe um usuário com esse e-mail!");
+		}
+		const passwordHash = bcrypt.hashSync(registry.password, 10);
+		await db.collection("users").insertOne({
+			name: registry.name,
+			email: registry.email,
+			password: passwordHash,
+		});
+		res.sendStatus(201);
+	} catch {
+		res.sendStatus(500);
 	}
-	const isRepeatEmail = await repeatEmail(registry.email).then((repeat) => {
-		return repeat.length;
-	});
-	if (isRepeatEmail !== 0) {
-		return res.status(409).send("Já existe um usuário com esse e-mail!");
+});
+
+app.post("/sign-in", async (req, res) => {
+	const { email, password } = req.body;
+	try {
+		const user = await db.collection("users").findOne({ email });
+		if (!user) {
+			return res.status(404).send("Usuário e/ou senha inválidos");
+		}
+		const passwordChecked = await bcrypt.compare(password, user.password);
+		if (passwordChecked) {
+			const token = uuid();
+			await db.collection("sessions").insertOne({
+				userId: user._id,
+				token,
+			});
+			res.send(token);
+		} else {
+			res.status(404).send("Usuário e/ou senha inválidos");
+		}
+	} catch {
+		res.sendStatus(500);
 	}
-	const passwordHash = bcrypt.hashSync(registry.password, 10);
-	await db.collection("users").insertOne({
-		name: registry.name,
-		email: registry.email,
-		password: passwordHash,
-	});
-	res.sendStatus(201);
 });
 
 export default app;
