@@ -78,9 +78,8 @@ app.post("/sign-in", async (req, res) => {
 	const { email, password } = req.body;
 	try {
 		const user = await db.collection("users").findOne({ email });
-		if (!user) {
-			return res.status(404).send("Usuário e/ou senha inválidos");
-		}
+		if (!user) return res.status(404).send("Usuário e/ou senha inválidos");
+		
 		const passwordChecked = await bcrypt.compare(password, user.password);
 		if (passwordChecked) {
 			const token = uuid();
@@ -92,6 +91,37 @@ app.post("/sign-in", async (req, res) => {
 		} else {
 			res.status(404).send("Usuário e/ou senha inválidos");
 		}
+	} catch {
+		res.sendStatus(500);
+	}
+});
+
+app.post("/movements", async (req, res) => {
+	const { authorization } = req.headers;
+	const token = authorization?.replace("Bearer ", "");
+	if (!token) return res.sendStatus(401);
+	try {        
+        
+		const session = await db.collection("sessions").findOne({ token });
+		if (!session) return res.sendStatus(401);
+
+		const movement = req.body;
+		const moveValidation = movementSchema.validate(movement, {
+			abortEarly: false,
+		});
+       
+		if (moveValidation.error) {
+            console.log("422")
+			const errors = moveValidation.error.details.map((error) => error.message);
+			return res.status(422).send(errors);
+		}
+        await db.collection("movements").insertOne({
+            userId: session.userId,
+            valor: movement.valor,
+            description: movement.description,
+            type: movement.type
+        });
+        res.sendStatus(201);
 	} catch {
 		res.sendStatus(500);
 	}
