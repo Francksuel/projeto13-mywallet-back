@@ -15,7 +15,7 @@ const userSchema = joi.object({
 	password: joi.string().min(4).required(),
 });
 const movementSchema = joi.object({
-	valor: joi.number().positive().precision(2).required(),
+	valor: joi.number().positive().required(),
 	description: joi.string().min(1).required(),
 	type: joi.string().valid("entrada", "saida").required(),
 });
@@ -30,10 +30,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-async function repeatName(name) {
-	const users = await db.collection("users").find().toArray();
-	return users.filter((element) => element.name === name);
-}
 async function repeatEmail(email) {
 	const users = await db.collection("users").find().toArray();
 	return users.filter((element) => element.email === email);
@@ -50,12 +46,6 @@ app.post("/sign-up", async (req, res) => {
 		registry.email = stripHtml(registry.email).result.trim();
 	}
 	try {
-		const isRepeatName = await repeatName(registry.name).then((repeat) => {
-			return repeat.length;
-		});
-		if (isRepeatName !== 0) {
-			return res.status(409).send("O nome de usuário já existe!");
-		}
 		const isRepeatEmail = await repeatEmail(registry.email).then((repeat) => {
 			return repeat.length;
 		});
@@ -79,7 +69,7 @@ app.post("/sign-in", async (req, res) => {
 	try {
 		const user = await db.collection("users").findOne({ email });
 		if (!user) return res.status(404).send("Usuário e/ou senha inválidos");
-		
+
 		const passwordChecked = await bcrypt.compare(password, user.password);
 		if (passwordChecked) {
 			const token = uuid();
@@ -100,8 +90,7 @@ app.post("/movements", async (req, res) => {
 	const { authorization } = req.headers;
 	const token = authorization?.replace("Bearer ", "");
 	if (!token) return res.sendStatus(401);
-	try {        
-        
+	try {
 		const session = await db.collection("sessions").findOne({ token });
 		if (!session) return res.sendStatus(401);
 
@@ -109,19 +98,36 @@ app.post("/movements", async (req, res) => {
 		const moveValidation = movementSchema.validate(movement, {
 			abortEarly: false,
 		});
-       
+
 		if (moveValidation.error) {
-            console.log("422")
 			const errors = moveValidation.error.details.map((error) => error.message);
 			return res.status(422).send(errors);
 		}
-        await db.collection("movements").insertOne({
-            userId: session.userId,
-            valor: movement.valor,
-            description: movement.description,
-            type: movement.type
-        });
-        res.sendStatus(201);
+		await db.collection("movements").insertOne({
+			userId: session.userId,
+			valor: movement.valor,
+			description: movement.description,
+			type: movement.type,
+		});
+		res.sendStatus(201);
+	} catch {
+		res.sendStatus(500);
+	}
+});
+
+app.get("/movements", async (req, res) => {
+	const { authorization } = req.headers;
+	const token = authorization?.replace("Bearer ", "");
+	if (!token) return res.sendStatus(401);
+	try {
+		const session = await db.collection("sessions").findOne({ token });
+		if (!session) return res.sendStatus(401);
+
+		const movementsUser = await db
+			.collection("movements")
+			.find({ userId: session.userId })
+			.toArray();
+		res.send(movementsUser);
 	} catch {
 		res.sendStatus(500);
 	}
