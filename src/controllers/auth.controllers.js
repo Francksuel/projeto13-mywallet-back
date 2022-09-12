@@ -1,33 +1,16 @@
 import mongo from "../database/db.js";
-import joi from "joi";
-import { stripHtml } from "string-strip-html";
 import bcrypt from "bcrypt";
 import { v4 as uuid } from "uuid";
 
 let db = await mongo();
-
-const userSchema = joi.object({
-	name: joi.string().min(3).required(),
-	email: joi.string().email().required(),
-	password: joi.string().min(4).required(),
-});
 
 async function repeatEmail(email) {
 	const users = await db.collection("users").find().toArray();
 	return users.filter((element) => element.email === email);
 }
 const signUp = async (req, res) => {
-	const registry = req.body;
-	if (registry.name && registry.email) {
-		registry.name = stripHtml(registry.name).result.trim();
-		registry.email = stripHtml(registry.email).result.trim();
-	}
-	const userValidation = userSchema.validate(registry, { abortEarly: false });
-	if (userValidation.error) {
-		const errors = userValidation.error.details.map((error) => error.message);
-		return res.status(422).send(errors);
-	}
 	try {
+		const registry = res.locals.registry;
 		const isRepeatEmail = await repeatEmail(registry.email).then((repeat) => {
 			return repeat.length;
 		});
@@ -44,7 +27,8 @@ const signUp = async (req, res) => {
 	} catch {
 		res.sendStatus(500);
 	}
-}
+};
+
 const signIn = async (req, res) => {
 	const { email, password } = req.body;
 	try {
@@ -65,7 +49,6 @@ const signIn = async (req, res) => {
 	} catch {
 		res.sendStatus(500);
 	}
-}
+};
 
-
-export {signUp, signIn};
+export { signUp, signIn };
