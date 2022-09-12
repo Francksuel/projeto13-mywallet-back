@@ -1,13 +1,10 @@
 import express from "express";
-import dotenv from "dotenv";
 import cors from "cors";
-import { MongoClient } from "mongodb";
 import joi from "joi";
 import bcrypt from "bcrypt";
 import { stripHtml } from "string-strip-html";
 import { v4 as uuid } from "uuid";
-
-dotenv.config();
+import mongo from "./database/db.js";
 
 const userSchema = joi.object({
 	name: joi.string().min(3).required(),
@@ -17,14 +14,10 @@ const userSchema = joi.object({
 const movementSchema = joi.object({
 	valor: joi.number().positive().required(),
 	description: joi.string().min(1).required(),
-	type: joi.string().valid("entrada", "saida").required(),
+	type: joi.string().valid("entrada", "saída").required(),
 });
 
-const mongoClient = new MongoClient(process.env.MONGO_URI);
-let db;
-mongoClient.connect().then(() => {
-	db = mongoClient.db("mywalletapi");
-});
+let db = await mongo();
 
 const app = express();
 app.use(cors());
@@ -37,13 +30,14 @@ async function repeatEmail(email) {
 
 app.post("/sign-up", async (req, res) => {
 	const registry = req.body;
+	if (registry.name && registry.email) {
+		registry.name = stripHtml(registry.name).result.trim();
+		registry.email = stripHtml(registry.email).result.trim();
+	}
 	const userValidation = userSchema.validate(registry, { abortEarly: false });
 	if (userValidation.error) {
 		const errors = userValidation.error.details.map((error) => error.message);
 		return res.status(422).send(errors);
-	} else {
-		registry.name = stripHtml(registry.name).result.trim();
-		registry.email = stripHtml(registry.email).result.trim();
 	}
 	try {
 		const isRepeatEmail = await repeatEmail(registry.email).then((repeat) => {
@@ -77,7 +71,7 @@ app.post("/sign-in", async (req, res) => {
 				userId: user._id,
 				token,
 			});
-			res.send(token);
+			res.send({ token, name: user.name });
 		} else {
 			res.status(404).send("Usuário e/ou senha inválidos");
 		}
@@ -95,6 +89,10 @@ app.post("/movements", async (req, res) => {
 		if (!session) return res.sendStatus(401);
 
 		const movement = req.body;
+		if (movement.valor && movement.description) {
+			movement.valor = stripHtml(movement.valor).result.trim();
+			movement.description = stripHtml(movement.description).result.trim();
+		}
 		const moveValidation = movementSchema.validate(movement, {
 			abortEarly: false,
 		});
@@ -108,6 +106,7 @@ app.post("/movements", async (req, res) => {
 			valor: movement.valor,
 			description: movement.description,
 			type: movement.type,
+			day: Date.now(),
 		});
 		res.sendStatus(201);
 	} catch {
