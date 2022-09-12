@@ -1,4 +1,4 @@
-import mongo from "../database/db.js";
+import { mongo } from "../database/db.js";
 
 let db = await mongo();
 

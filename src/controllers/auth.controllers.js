@@ -1,4 +1,4 @@
-import mongo from "../database/db.js";
+import { mongo } from "../database/db.js";
 import bcrypt from "bcrypt";
 import { v4 as uuid } from "uuid";
 
@@ -50,5 +50,4 @@ const signIn = async (req, res) => {
 		res.sendStatus(500);
 	}
 };
-
 export { signUp, signIn };

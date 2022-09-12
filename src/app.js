@@ -9,6 +9,6 @@ app.use(express.json());
 
 app.use(authRouter);
 
-app.use(movementsRouter)
+app.use(movementsRouter);
 
 export default app;
